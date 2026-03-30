@@ -1,0 +1,31 @@
+// Ваши данные: замените YOUR_TOKEN, YOUR_BASE_ID, YOUR_TABLE_ID
+const AIRTABLE_TOKEN = 'YOUR_TOKEN';  // patQti35eE2qFQYKK
+const AIRTABLE_BASE = 'YOUR_BASE_ID'; // appSQMpP8Kh4i466S
+const AIRTABLE_TABLE = 'YOUR_TABLE_ID'; // tbl70cRzDcyF5l6po
+
+fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`, {
+  headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+})
+.then(response => response.json())
+.then(data => {
+  data.records.forEach(record => {
+    const fields = record.fields;
+    if (fields.lat && fields.lon) {
+      const placemark = new ymaps.Placemark([fields.lat, fields.lon], {
+        hintContent: fields.название || 'Объект',
+        balloonContent: `
+          <strong>${fields.название}</strong><br>
+          ${fields.описание || ''}${fields.ссылка ? `<br><a href="${fields.ссылка}" target="_blank">Сайт</a>` : ''}
+          ${fields.фото ? `<br><img src="${fields.фото[0].url}" width="200">` : ''}
+        `
+      }, { preset: 'islands#icon', iconColor: '#0095b6' });
+
+      // Hover (из предыдущего)
+      placemark.events.add('mouseenter', () => placemark.options.set({ iconColor: '#ff0000', zIndex: 999 }));
+      placemark.events.add('mouseleave', () => placemark.options.set({ iconColor: '#0095b6' }));
+
+      myMap.geoObjects.add(placemark);
+    }
+  });
+  myMap.setBounds(myMap.geoObjects.getBounds());  // Автозум на все метки
+});
