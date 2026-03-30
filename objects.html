@@ -1,7 +1,7 @@
 // Ваши данные: замените YOUR_TOKEN, YOUR_BASE_ID, YOUR_TABLE_ID
-const AIRTABLE_TOKEN = 'YOUR_TOKEN';  // patQti35eE2qFQYKK
-const AIRTABLE_BASE = 'YOUR_BASE_ID'; // appSQMpP8Kh4i466S
-const AIRTABLE_TABLE = 'YOUR_TABLE_ID'; // tbl70cRzDcyF5l6po
+const AIRTABLE_TOKEN = 'patQti35eE2qFQYKK';  // patQti35eE2qFQYKK
+const AIRTABLE_BASE = 'appSQMpP8Kh4i466S'; // appSQMpP8Kh4i466S
+const AIRTABLE_TABLE = 'tbl70cRzDcyF5l6po'; // tbl70cRzDcyF5l6po
 
 fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`, {
   headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
