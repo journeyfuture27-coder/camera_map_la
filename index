@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>АЗС на карте</title>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=ваш_ключ&lang=ru_RU"></script>
+</head>
+<body>
+    <div id="map" style="width: 100%; height: 500px;"></div>
+    <script>
+        ymaps.ready(init);
+        function init() {
+            var myMap = new ymaps.Map("map", {
+                center: [56.791922, 60.571735],
+                zoom: 15
+            });
+            var myPlacemark = new ymaps.Placemark([56.791922, 60.571735], {
+                hintContent: 'АЗС',
+                balloonContent: 'АЗС — топливо и сервис'
+            });
+            myMap.geoObjects.add(myPlacemark);
+        }
+    </script>
+</body>
+</html>
