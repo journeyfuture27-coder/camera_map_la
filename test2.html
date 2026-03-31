@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Яндекс Карты - Тест</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+        }
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        .info {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 1000;
+            font-family: monospace;
+            pointer-events: none;
+        }
+        .error {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(255,0,0,0.9);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 1000;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="info" id="info">Инициализация...</div>
+
+    <script>
+        // Функция для отображения ошибки
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.innerHTML = `❌ ${message}<br><br>Решение: <a href="https://developer.tech.yandex.ru/" target="_blank" style="color:white;">Проверьте API ключ в кабинете разработчика</a>`;
+            document.body.appendChild(errorDiv);
+            document.getElementById('info').style.display = 'none';
+        }
+
+        // Загружаем скрипт динамически
+        const script = document.createElement('script');
+        // ВСТАВЬТЕ ВАШ КЛЮЧ В СТРОКЕ НИЖЕ
+        const YOUR_API_KEY = 'ВАШ_КЛЮЧ_ЗДЕСЬ';
+        
+        script.src = `https://api-maps.yandex.ru/v3/?apikey=$0c8158f3-19bb-4894-a380-7a632583d6d4&lang=ru_RU`;
+        script.onload = () => {
+            document.getElementById('info').textContent = 'API загружен, создаем карту...';
+            
+            ymaps3.ready
+                .then(() => {
+                    document.getElementById('info').textContent = 'Создаем карту...';
+                    
+                    // Создаем карту
+                    const map = new ymaps3.YMap(document.getElementById('map'), {
+                        location: {
+                            center: [55.751574, 37.573856],
+                            zoom: 12
+                        }
+                    });
+                    
+                    // Добавляем слой карты
+                    map.addChild(new ymaps3.YMapDefaultSchemeLayer());
+                    
+                    // Добавляем слой для маркеров
+                    map.addChild(new ymaps3.YMapDefaultMarkerLayer());
+                    
+                    document.getElementById('info').textContent = '✅ Карта готова! Кликните по метке';
+                    
+                    // Создаем красивый маркер
+                    const markerDiv = document.createElement('div');
+                    markerDiv.innerHTML = '📍';
+                    markerDiv.style.fontSize = '32px';
+                    markerDiv.style.cursor = 'pointer';
+                    markerDiv.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))';
+                    
+                    const marker = new ymaps3.YMapMarker(
+                        { coordinates: [55.751574, 37.573856] },
+                        markerDiv
+                    );
+                    
+                    map.addChild(marker);
+                    
+                    markerDiv.addEventListener('click', () => {
+                        alert('🎉 Ура! Карта работает!\n\nТеперь можно подключать Airtable.');
+                    });
+                    
+                })
+                .catch(error => {
+                    showError(`Ошибка инициализации: ${error.message}`);
+                    console.error(error);
+                });
+        };
+        
+        script.onerror = () => {
+            showError('Не удалось загрузить API Яндекс.Карт. Проверьте интернет и API ключ.');
+        };
+        
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
