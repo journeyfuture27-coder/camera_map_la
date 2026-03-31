@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Камеры на карте</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        .info-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            text-align: center;
+            max-width: 400px;
+            margin: 0 auto;
+            font-family: monospace;
+            pointer-events: none;
+        }
+        .loading {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ffaa00;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            font-family: monospace;
+        }
+        .counter {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            font-family: monospace;
+        }
+        .custom-marker {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            transform: translate(-50%, -50%);
+            cursor: pointer;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+            transition: transform 0.2s;
+        }
+        .custom-marker:hover {
+            transform: translate(-50%, -50%) scale(1.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="loading" id="loadingStatus">🔄 Загрузка карты...</div>
+    <div class="counter" id="counter">📍 Объектов: 0</div>
+    <div class="info-panel" id="infoPanel">
+        📍 Загрузка данных из Airtable...
+    </div>
+
+    <script>
+        // ==================== НАСТРОЙКИ ====================
+        const YANDEX_API_KEY = '0c8158f3-19bb-4894-a380-7a632583d6d4';
+        
+        // ⚠️ ТОКЕН ТОЛЬКО ДЛЯ ЧТЕНИЯ (можно публиковать в открытом коде)
+        // Создан в Airtable с правами только на чтение
+        const AIRTABLE_READ_TOKEN = 'patНОВЫЙ_ТОКЕН_ТОЛЬКО_ДЛЯ_ЧТЕНИЯ';
+        
+        const BASE_ID = 'appSQMpP8Kh4i466S';
+        const TABLE_ID = 'tbl70cRzDcyF5l6po';
+        // ===================================================
+        
+        const loadingDiv = document.getElementById('loadingStatus');
+        const counterDiv = document.getElementById('counter');
+        const infoPanel = document.getElementById('infoPanel');
+        
+        function updateStatus(message, isError = false) {
+            loadingDiv.innerHTML = isError ? `❌ ${message}` : `🔄 ${message}`;
+            loadingDiv.style.background = isError ? 'rgba(255,0,0,0.8)' : 'rgba(0,0,0,0.7)';
+            console.log(message);
+        }
+        
+        function updateInfo(message, isError = false) {
+            infoPanel.innerHTML = message;
+            infoPanel.style.background = isError ? 'rgba(255,0,0,0.9)' : 'rgba(0,0,0,0.85)';
+        }
+        
+        function updateCount(count) {
+            counterDiv.innerHTML = `📍 Объектов: ${count}`;
+        }
+        
+        function parseCoordinates(coordString) {
+            if (!coordString || typeof coordString !== 'string') return null;
+            const parts = coordString.trim().split(',');
+            if (parts.length !== 2) return null;
+            const lat = parseFloat(parts[0].trim());
+            const lng = parseFloat(parts[1].trim());
+            if (isNaN(lat) || isNaN(lng)) return null;
+            return [lng, lat];
+        }
+        
+        async function fetchFromAirtable() {
+            const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
+            
+            updateStatus('Загрузка данных из Airtable...');
+            updateInfo('📡 Запрашиваем данные...');
+            
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${AIRTABLE_READ_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Airtable ошибка ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('Данные из Airtable:', data);
+                
+                const points = [];
+                for (const record of data.records) {
+                    const fields = record.fields;
+                    
+                    const coordinatesRaw = fields['Coordinates'];
+                    const coordinates = parseCoordinates(coordinatesRaw);
+                    
+                    const title = fields['Name'] || fields['name'] || `Объект ${record.id}`;
+                    const description = fields['Description'] || fields['Address'] || '';
+                    
+                    if (coordinates) {
+                        points.push({
+                            id: record.id,
+                            coordinates: coordinates,
+                            title: String(title),
+                            description: String(description)
+                        });
+                        console.log(`✅ Добавлен: ${title}`);
+                    } else {
+                        console.warn(`❌ Пропущена: ${title}`);
+                    }
+                }
+                
+                console.log(`📊 Найдено точек: ${points.length} из ${data.records.length}`);
+                updateInfo(`📊 Загружено объектов: ${points.length}`);
+                updateCount(points.length);
+                
+                return points;
+                
+            } catch (error) {
+                console.error('Ошибка загрузки Airtable:', error);
+                updateInfo(`❌ Ошибка: ${error.message}`, true);
+                return [];
+            }
+        }
+        
+        function createMarker(point) {
+            const markerContainer = document.createElement('div');
+            markerContainer.className = 'custom-marker';
+            
+            const iconElement = document.createElement('div');
+            iconElement.innerHTML = '📍';
+            iconElement.style.fontSize = '28px';
+            iconElement.style.width = '36px';
+            iconElement.style.height = '36px';
+            iconElement.style.display = 'flex';
+            iconElement.style.alignItems = 'center';
+            iconElement.style.justifyContent = 'center';
+            iconElement.style.backgroundColor = 'white';
+            iconElement.style.borderRadius = '50%';
+            iconElement.style.border = '2px solid #ff4444';
+            iconElement.style.boxShadow = '0 2px 6px rgba(0,0,0,0.2)';
+            
+            markerContainer.appendChild(iconElement);
+            
+            const marker = new ymaps3.YMapMarker(
+                { coordinates: point.coordinates },
+                markerContainer
+            );
+            
+            markerContainer.addEventListener('click', (e) => {
+                e.stopPropagation();
+                let message = `📌 ${point.title}`;
+                if (point.description) {
+                    message += `\n📝 ${point.description}`;
+                }
+                alert(message);
+                updateInfo(`📍 ${point.title}`, false);
+                setTimeout(() => {
+                    updateInfo(`📊 Всего объектов: ${window.pointsCount || 0}`);
+                }, 3000);
+            });
+            
+            return marker;
+        }
+        
+        async function initMap(points) {
+            updateStatus('Создание карты...');
+            
+            let center;
+            if (points.length > 0) {
+                let sumLng = 0, sumLat = 0;
+                points.forEach(p => {
+                    sumLng += p.coordinates[0];
+                    sumLat += p.coordinates[1];
+                });
+                center = [sumLng / points.length, sumLat / points.length];
+            } else {
+                center = [37.573856, 55.751574];
+            }
+            
+            const map = new ymaps3.YMap(document.getElementById('map'), {
+                location: { center: center, zoom: 12 }
+            });
+            
+            map.addChild(new ymaps3.YMapDefaultSchemeLayer());
+            map.addChild(new ymaps3.YMapDefaultFeaturesLayer({ zIndex: 1800 }));
+            
+            if (points.length === 0) {
+                updateStatus('Нет данных для отображения', true);
+                updateInfo('⚠️ В Airtable нет объектов с координатами', true);
+                return;
+            }
+            
+            updateStatus(`Добавление ${points.length} меток...`);
+            
+            points.forEach(point => {
+                const marker = createMarker(point);
+                map.addChild(marker);
+            });
+            
+            window.pointsCount = points.length;
+            
+            if (points.length > 1) {
+                let minLng = Infinity, maxLng = -Infinity;
+                let minLat = Infinity, maxLat = -Infinity;
+                points.forEach(p => {
+                    minLng = Math.min(minLng, p.coordinates[0]);
+                    maxLng = Math.max(maxLng, p.coordinates[0]);
+                    minLat = Math.min(minLat, p.coordinates[1]);
+                    maxLat = Math.max(maxLat, p.coordinates[1]);
+                });
+                
+                const lngSpan = maxLng - minLng;
+                const latSpan = maxLat - minLat;
+                const maxSpan = Math.max(lngSpan, latSpan);
+                
+                let zoom = 12;
+                if (maxSpan > 1) zoom = 9;
+                else if (maxSpan > 0.5) zoom = 10;
+                else if (maxSpan > 0.2) zoom = 11;
+                else if (maxSpan > 0.05) zoom = 13;
+                else if (maxSpan > 0.01) zoom = 14;
+                else zoom = 15;
+                
+                map.update({ location: { center: center, zoom: zoom } });
+            }
+            
+            updateStatus(`✅ Готово! ${points.length} объектов на карте`);
+            updateInfo(`📍 Всего объектов: ${points.length}. Кликните по маркеру для информации`);
+        }
+        
+        async function loadMapAndData() {
+            updateStatus('Загрузка API...');
+            await ymaps3.ready;
+            const points = await fetchFromAirtable();
+            await initMap(points);
+        }
+        
+        function start() {
+            const script = document.createElement('script');
+            script.src = `https://api-maps.yandex.ru/v3/?apikey=${YANDEX_API_KEY}&lang=ru_RU`;
+            script.onload = () => {
+                loadMapAndData().catch(err => {
+                    updateStatus(`Ошибка: ${err.message}`, true);
+                });
+            };
+            script.onerror = () => {
+                updateStatus('Ошибка загрузки API', true);
+            };
+            document.head.appendChild(script);
+        }
+        
+        start();
+    </script>
+</body>
+</html>
