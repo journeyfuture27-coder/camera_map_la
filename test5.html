@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Камеры на карте - Airtable + Яндекс.Карты</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        }
+        #map {
+            width: 100vw;
+            height: 100vh;
+        }
+        .info-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+            text-align: center;
+            max-width: 400px;
+            margin: 0 auto;
+            font-family: monospace;
+            pointer-events: none;
+        }
+        .loading {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ffaa00;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            font-family: monospace;
+        }
+        .counter {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 1000;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div class="loading" id="loadingStatus">🔄 Загрузка карты...</div>
+    <div class="counter" id="counter">📍 Объектов: 0</div>
+    <div class="info-panel" id="infoPanel">
+        📍 Загрузка данных из Airtable...
+    </div>
+
+    <script>
+        // ==================== НАСТРОЙКИ AIRTABLE ====================
+        const AIRTABLE_TOKEN = 'patQti35eE2qFQYKK.fdd589ae9c5b728679a0bdc3f82fc98371601bb5b7b6310a10f4093f4219f8be';
+        const BASE_ID = 'appSQMpP8Kh4i466S';
+        const TABLE_ID = 'tbl70cRzDcyF5l6po';
+        
+        // Яндекс ключ
+        const YANDEX_API_KEY = '0c8158f3-19bb-4894-a380-7a632583d6d4';
+        // ============================================================
+        
+        const loadingDiv = document.getElementById('loadingStatus');
+        const counterDiv = document.getElementById('counter');
+        const infoPanel = document.getElementById('infoPanel');
+        
+        function updateStatus(message, isError = false) {
+            loadingDiv.innerHTML = isError ? `❌ ${message}` : `🔄 ${message}`;
+            if (isError) {
+                loadingDiv.style.background = 'rgba(255,0,0,0.8)';
+            } else {
+                loadingDiv.style.background = 'rgba(0,0,0,0.7)';
+            }
+            console.log(message);
+        }
+        
+        function updateInfo(message, isError = false) {
+            infoPanel.innerHTML = message;
+            infoPanel.style.background = isError ? 'rgba(255,0,0,0.9)' : 'rgba(0,0,0,0.85)';
+        }
+        
+        function updateCount(count) {
+            counterDiv.innerHTML = `📍 Объектов: ${count}`;
+        }
+        
+        // Функция парсинга координат из строки "широта,долгота"
+        function parseCoordinates(coordString) {
+            if (!coordString || typeof coordString !== 'string') return null;
+            
+            // Удаляем лишние пробелы и разбиваем по запятой
+            const parts = coordString.trim().split(',');
+            if (parts.length !== 2) return null;
+            
+            const lat = parseFloat(parts[0].trim());
+            const lng = parseFloat(parts[1].trim());
+            
+            if (isNaN(lat) || isNaN(lng)) return null;
+            
+            // Яндекс использует [долгота, широта]
+            return [lng, lat];
+        }
+        
+        // Функция загрузки данных из Airtable
+        async function fetchFromAirtable() {
+            const url = `https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`;
+            
+            updateStatus('Загрузка данных из Airtable...');
+            updateInfo('📡 Запрашиваем данные из Airtable...');
+            
+            try {
+                const response = await fetch(url, {
+                    headers: {
+                        'Authorization': `Bearer ${AIRTABLE_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Airtable ошибка ${response.status}: ${errorText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Полные данные из Airtable:', data);
+                
+                // Анализируем структуру полей
+                if (data.records && data.records.length > 0) {
+                    const firstRecord = data.records[0];
+                    console.log('Структура полей первой записи:', Object.keys(firstRecord.fields));
+                    console.log('Содержимое первой записи:', firstRecord.fields);
+                }
+                
+                // Преобразуем записи в формат для карты
+                const points = [];
+                for (const record of data.records) {
+                    const fields = record.fields;
+                    
+                    // Получаем координаты из поля 'Coordinates'
+                    const coordinatesRaw = fields['Coordinates'];
+                    const coordinates = parseCoordinates(coordinatesRaw);
+                    
+                    // Получаем название (поле 'Name')
+                    const title = fields['Name'] || fields['name'] || `Объект ${record.id}`;
+                    
+                    // Получаем описание (поля 'Description' и 'Address')
+                    let description = '';
+                    if (fields['Description']) description += fields['Description'];
+                    if (fields['Address']) description += (description ? '\n📍 ' : '') + fields['Address'];
+                    if (fields['Object Type']) description += (description ? '\n🏷️ Тип: ' : '') + fields['Object Type'];
+                    
+                    if (coordinates) {
+                        points.push({
+                            id: record.id,
+                            coordinates: coordinates,  // Уже в формате [долгота, широта]
+                            title: String(title),
+                            description: String(description),
+                            address: fields['Address'] || '',
+                            objectType: fields['Object Type'] || '',
+                            rawData: fields
+                        });
+                        console.log(`✅ Добавлен объект: ${title} -> координаты: [${coordinates[0]}, ${coordinates[1]}]`);
+                    } else {
+                        console.warn(`❌ Пропущена запись ${record.id}: некорректные координаты "${coordinatesRaw}"`);
+                    }
+                }
+                
+                console.log(`📊 Найдено точек с координатами: ${points.length} из ${data.records.length}`);
+                updateInfo(`📊 Загружено объектов: ${points.length}`);
+                updateCount(points.length);
+                
+                return points;
+                
+            } catch (error) {
+                console.error('Ошибка загрузки Airtable:', error);
+                updateInfo(`❌ Ошибка Airtable: ${error.message}`, true);
+                return [];
+            }
+        }
+        
+        // Создание маркера на карте
+        function createMarker(point, map) {
+            // Создаем HTML элемент маркера с разным цветом в зависимости от типа объекта
+            const markerElement = document.createElement('div');
+            
+            // Разные иконки для разных типов объектов
+            let icon = '📍';
+            let color = '#ff4444';
+            
+            if (point.objectType && point.objectType.toLowerCase().includes('playground')) {
+                icon = '🎠';
+                color = '#44aa44';
+            } else if (point.objectType && point.objectType.toLowerCase().includes('camera')) {
+                icon = '📷';
+                color = '#ff4444';
+            }
+            
+            markerElement.innerHTML = icon;
+            markerElement.style.fontSize = '32px';
+            markerElement.style.cursor = 'pointer';
+            markerElement.style.filter = 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))';
+            markerElement.style.transition = 'transform 0.2s';
+            
+            markerElement.onmouseenter = () => {
+                markerElement.style.transform = 'scale(1.2)';
+            };
+            markerElement.onmouseleave = () => {
+                markerElement.style.transform = 'scale(1)';
+            };
+            
+            const marker = new ymaps3.YMapMarker(
+                { coordinates: point.coordinates },
+                markerElement
+            );
+            
+            // Добавляем обработчик клика
+            markerElement.addEventListener('click', () => {
+                let message = `📌 ${point.title}`;
+                if (point.objectType) {
+                    message += `\n🏷️ Тип: ${point.objectType}`;
+                }
+                if (point.address) {
+                    message += `\n📍 Адрес: ${point.address}`;
+                }
+                if (point.description && point.description !== point.address) {
+                    message += `\n📝 ${point.description}`;
+                }
+                alert(message);
+                updateInfo(`📍 ${point.title}`, false);
+                setTimeout(() => {
+                    updateInfo(`📊 Всего объектов: ${window.pointsCount || 0}`);
+                }, 3000);
+            });
+            
+            return marker;
+        }
+        
+        // Основная функция инициализации карты
+        async function initMap(points) {
+            updateStatus('Создание карты...');
+            
+            // Определяем центр карты
+            let center;
+            if (points.length > 0) {
+                // Центрируем по первой точке
+                center = points[0].coordinates;
+            } else {
+                // Координаты по умолчанию (Москва)
+                center = [37.573856, 55.751574];
+            }
+            
+            // Создаем карту
+            const map = new ymaps3.YMap(document.getElementById('map'), {
+                location: {
+                    center: center,
+                    zoom: 12
+                }
+            });
+            
+            // Добавляем слой карты
+            map.addChild(new ymaps3.YMapDefaultSchemeLayer());
+            
+            // Добавляем слой для маркеров
+            map.addChild(new ymaps3.YMapDefaultFeaturesLayer({ zIndex: 1800 }));
+            
+            if (points.length === 0) {
+                updateStatus('Нет данных для отображения', true);
+                updateInfo('⚠️ В Airtable не найдено объектов с координатами.\n\nПоле Coordinates должно содержать данные в формате: 55.751574,37.573856', true);
+                return;
+            }
+            
+            updateStatus(`Добавление ${points.length} меток...`);
+            
+            // Добавляем маркеры
+            points.forEach(point => {
+                const marker = createMarker(point, map);
+                map.addChild(marker);
+            });
+            
+            window.pointsCount = points.length;
+            updateStatus(`✅ Готово! ${points.length} объектов на карте`);
+            updateInfo(`📍 Всего объектов: ${points.length}. Кликните по маркеру для информации`);
+        }
+        
+        // Загружаем API Яндекс.Карт и данные из Airtable
+        async function loadMapAndData() {
+            updateStatus('Загрузка API Яндекс.Карт...');
+            
+            // Ждем загрузку API
+            await ymaps3.ready;
+            
+            // Загружаем данные из Airtable
+            const points = await fetchFromAirtable();
+            
+            // Инициализируем карту с полученными точками
+            await initMap(points);
+        }
+        
+        // Загружаем API Яндекс.Карт динамически
+        function start() {
+            const script = document.createElement('script');
+            script.src = `https://api-maps.yandex.ru/v3/?apikey=${YANDEX_API_KEY}&lang=ru_RU`;
+            
+            script.onload = () => {
+                console.log('API Яндекс.Карт загружен');
+                loadMapAndData().catch(err => {
+                    console.error('Ошибка:', err);
+                    updateStatus(`Ошибка: ${err.message}`, true);
+                    updateInfo(`❌ Ошибка: ${err.message}`, true);
+                });
+            };
+            
+            script.onerror = () => {
+                updateStatus('Ошибка загрузки API Яндекс.Карт', true);
+                updateInfo('❌ Не удалось загрузить API карты. Проверьте ключ и интернет', true);
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Стартуем
+        start();
+    </script>
+</body>
+</html>
