@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Яндекс Карты - Альтернативный маркер</title>
+    <style>
+        html, body, #map {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://api-maps.yandex.ru/v3/?apikey=0c8158f3-19bb-4894-a380-7a632583d6d4&lang=ru_RU"></script>
+    <script>
+        ymaps3.ready.then(() => {
+            // Создаем карту
+            const map = new ymaps3.YMap(document.getElementById('map'), {
+                location: {
+                    center: [55.751574, 37.573856],
+                    zoom: 12
+                }
+            });
+            
+            // Добавляем слой карты
+            map.addChild(new ymaps3.YMapDefaultSchemeLayer());
+            
+            // Создаем простой круглый маркер через DOM-элемент
+            const markerDiv = document.createElement('div');
+            markerDiv.style.width = '24px';
+            markerDiv.style.height = '24px';
+            markerDiv.style.backgroundColor = '#ff0000';
+            markerDiv.style.borderRadius = '50%';
+            markerDiv.style.border = '3px solid white';
+            markerDiv.style.boxShadow = '0 2px 6px rgba(0,0,0,0.3)';
+            markerDiv.style.cursor = 'pointer';
+            
+            // Добавляем пульсацию при наведении
+            markerDiv.onmouseenter = () => {
+                markerDiv.style.transform = 'scale(1.2)';
+                markerDiv.style.transition = 'transform 0.2s';
+            };
+            markerDiv.onmouseleave = () => {
+                markerDiv.style.transform = 'scale(1)';
+            };
+            
+            // Создаем маркер
+            const marker = new ymaps3.YMapMarker(
+                { coordinates: [55.751574, 37.573856] },
+                markerDiv
+            );
+            
+            map.addChild(marker);
+            
+            markerDiv.onclick = () => {
+                alert('✅ Маркер работает!');
+            };
+            
+            // Для демонстрации добавим еще один маркер
+            const marker2Div = document.createElement('div');
+            marker2Div.style.width = '24px';
+            marker2Div.style.height = '24px';
+            marker2Div.style.backgroundColor = '#0066ff';
+            marker2Div.style.borderRadius = '50%';
+            marker2Div.style.border = '3px solid white';
+            marker2Div.style.cursor = 'pointer';
+            
+            const marker2 = new ymaps3.YMapMarker(
+                { coordinates: [55.731574, 37.603856] },
+                marker2Div
+            );
+            
+            map.addChild(marker2);
+            marker2Div.onclick = () => {
+                alert('Синий маркер (дополнительный)');
+            };
+            
+        }).catch(error => {
+            console.error('Ошибка:', error);
+            document.body.innerHTML = '<div style="padding:20px;color:red;">Ошибка загрузки карты: ' + error.message + '</div>';
+        });
+    </script>
+</body>
+</html>
